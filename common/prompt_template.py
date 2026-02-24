@@ -165,6 +165,15 @@ Step 1: Decide the question type (choose ONE based on probability weights):
 
   A. Standard questions (Weight: {weight_a}%)
       → NO TOOL CALL NEEDED - Just follow the existing rules and output the question
+      
+      ⚠️ CRITICAL CONSTRAINT FOR TYPE A QUESTIONS - NO SPECIFIC ENTITY IDENTIFIERS:
+      - DO NOT include ANY specific entity identifiers (wallet addresses, IDs, account numbers, transaction hashes, etc.)
+      - Type A questions must be answerable WITHOUT knowing any specific entity identifier in advance
+      - Ask ONLY about:
+        (1) Aggregated data across ALL entities (total, count, average, sum, etc.)
+        (2) Superlative comparisons that identify entities (highest, lowest, largest, smallest, most, least, etc.)
+      - If you want to ask about a specific entity identifier, you MUST use Type B workflow instead
+      
       - If the output would be a list, show only the first 3 results.
       - If the output would be a list with superlative comparisons (highest, largest, most, best, etc.), do not always use the same phrasing. 
       Instead, randomly choose:

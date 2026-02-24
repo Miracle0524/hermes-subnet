@@ -257,6 +257,7 @@ class ChallengeManager:
                     error_msgs = []
                     weight_a = self.ipc_meta_config.get("weight_a", 70)
                     weight_b = self.ipc_meta_config.get("weight_b", 30)
+                    q_metrics_data = None
 
                     for attempt in range(max_retries):
                         challenge_id = str(uuid4())
@@ -272,7 +273,7 @@ class ChallengeManager:
                             block_cache[cid_hash] = latest_block - 1000
                         
                         # generate challenge
-                        question, error = await question_generator.generate_question(
+                        question, q_metrics_data, error = await question_generator.generate_question(
                             cid_hash, 
                             project_config,
                             self.llm_synthetic,
@@ -402,6 +403,10 @@ class ChallengeManager:
                         challenge_id=challenge_id,
                         question=question,
                         question_generator_model_name=self.llm_synthetic.model_name,
+                        question_generator_metrics=utils.pick(
+                            q_metrics_data,
+                            ["input_tokens", "input_cache_read_tokens", "output_tokens", "tool_calls"]
+                        ) if q_metrics_data else None,
                         ground_truth_model_name=model_name,
                         score_model_name=self.llm_score.model_name,
                         ground_truth=ground_truth[:500] if ground_truth else None,

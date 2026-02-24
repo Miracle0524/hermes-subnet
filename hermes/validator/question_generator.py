@@ -43,9 +43,9 @@ class QuestionGenerator:
             round_id: int = 0,
             weight_a: int = 70,
             weight_b: int = 30,
-        ) -> tuple[str, str | None]:
+        ) -> tuple[str, dict | None, str | None]:
         if not project.schema_content:
-            return "", "schema not found"
+            return "", None, "schema not found"
 
         if cid_hash not in self.project_question_history:
             self.project_question_history[cid_hash] = deque(maxlen=self.max_history)
@@ -81,41 +81,43 @@ class QuestionGenerator:
                     },
                 )
                 question = response.get('messages', [])[-1].content
+                d = None
                 if token_usage_metrics is not None:
                     d = token_usage_metrics.parse(
                         cid_hash, phase=Phase.GENERATE_QUESTION, response=response, extra={"round_id": round_id}
                     )
                     token_usage_metrics.append(d)
-                return question, None
+                return question, d, None
 
             except Exception as e:
                 logger.error(f"Error occurred: {e}")
-                return "", f"{e}"
+                return "", None, f"{e}"
 
         async def try_with_fallback():
             try:
                 prompt = SYNTHETIC_PROMPT_FALLBACK.format(entity_schema=project.schema_content, recent_questions=recent_questions)
                 response = await llm.ainvoke([HumanMessage(content=prompt)])
                 question = response.content.strip()
+                d = None
                 if token_usage_metrics is not None:
                     d = token_usage_metrics.parse(
                         cid_hash, phase=Phase.GENERATE_QUESTION, response=response, extra={"round_id": round_id}
                     )
                     token_usage_metrics.append(d)
                 
-                return question, None
+                return question, d, None
             except Exception as e:
                 logger.error(f"Error generating fallback question for project {cid_hash}: {e}")
-                return "", f"{e}"
+                return "", None, f"{e}"
 
-        question, error = await try_with_tools()
+        question, metrics_data, error = await try_with_tools()
         if not question:
-            question, error = await try_with_fallback()
+            question, metrics_data, error = await try_with_fallback()
 
         if question:
             self.add_to_history(cid_hash, question)
-        
-        return question, error
+
+        return question, metrics_data, error
 
     def _is_similar(self, new_question: str) -> bool:
         new_clean = new_question.lower().strip()
