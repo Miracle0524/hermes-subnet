@@ -703,9 +703,15 @@ class ChallengeManager:
         scores_np = np.array(scores, dtype=np.float32)
         burn_ratio = self.ipc_meta_config.get("burn_ratio", 0)
         burn_uid = self.settings.burn_uid
+        raw_uids_for_upload = [int(uid) for uid in uids]
+        raw_weights_for_upload = [float(score) for score in scores]
 
-        if np.all(scores_np == 0):
-            logger.warning("[ChallengeManager] All scores are zero, burning weights.")
+        # Check if all scores are zero or burn_ratio is 1 (100% burn)
+        if np.all(scores_np == 0) or burn_ratio >= 1.0:
+            if burn_ratio >= 1.0:
+                logger.warning(f"[ChallengeManager] burn_ratio={burn_ratio}, burning all weights.")
+            else:
+                logger.warning("[ChallengeManager] All scores are zero, burning weights.")
             burn_uids_np = np.array([burn_uid], dtype=np.int64)
             burn_weights_np = np.array([1.0], dtype=np.float32)
             (
@@ -745,7 +751,7 @@ class ChallengeManager:
                         scores_np = np.concatenate([np.array([burn_weight], dtype=np.float32), scores_np])
                         logger.info(f"[ChallengeManager] Inserted burn_uid={burn_uid} at index=0, burn_ratio={burn_ratio*100:.1f}%, burn_weight={burn_weight:.4f}, miner_sum={scores_sum:.4f}")
                 else:
-                    logger.warning(f"[ChallengeManager] Cannot apply burn_ratio with zero scores_sum")
+                    logger.warning("[ChallengeManager] Cannot apply burn_ratio with zero scores_sum")
 
             (
                 processed_weight_uids,
@@ -779,8 +785,8 @@ class ChallengeManager:
             address=self.settings.wallet.hotkey.ss58_address,
             version=self.settings.version,
             round_id=self.round_id,
-            raw_uids=uids,
-            raw_weights=scores,
+            raw_uids=raw_uids_for_upload,
+            raw_weights=raw_weights_for_upload,
             processed_weight_uids=processed_uids_list,
             processed_weights=processed_weights_list,
             burn_ratio=burn_ratio,
