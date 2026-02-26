@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from neurons.validator import Validator
 from agent.stats import Phase, TokenUsageMetrics
 from common.agent_manager import AgentManager
-from common.enums import ChallengeType, ErrorCode, FailureType
+from common.enums import ChallengeType, ErrorCode, FailureType, ProjectPhase
 from common.protocol import SyntheticNonStreamSynapse
 from common.settings import Settings
 from common.table_formatter import table_formatter
@@ -248,9 +248,13 @@ class ChallengeManager:
                     if allowed_cid_hashs_str:
                         allowed_cid_hashs = allowed_cid_hashs_str.split(",")
                         if cid_hash not in allowed_cid_hashs:
-                            logger.info(f"[ChallengeManager] - {cid_hash} Skipping project not in allowed list")
+                            logger.warning(f"[ChallengeManager] - {cid_hash} not in allowed list, skipping")
                             continue
-
+                    
+                    if not self.agent_manager.is_project_enabled(cid_hash):
+                        logger.warning(f"[ChallengeManager] - {cid_hash} not enabled, skipping")
+                        continue
+                    
                     # Retry loop: attempt to generate a valid challenge for this project
                     max_retries = int(os.getenv("CHALLENGE_GENERATION_MAX_RETRIES", 3))
                     challenge_generated = False
@@ -258,6 +262,7 @@ class ChallengeManager:
                     weight_a = self.ipc_meta_config.get("weight_a", 70)
                     weight_b = self.ipc_meta_config.get("weight_b", 30)
                     q_metrics_data = None
+                    project_phase = self.agent_manager.get_project_phase(cid_hash)
 
                     for attempt in range(max_retries):
                         challenge_id = str(uuid4())
@@ -303,6 +308,7 @@ class ChallengeManager:
                         table_formatter.create_synthetic_challenge_table(
                             round_id=self.round_id,
                             challenge_id=challenge_id,
+                            project_phase_str=utils.get_project_phase_str(project_phase),
                             cid=cid_hash,
                             question=question,
                             success=is_valid,
@@ -325,19 +331,22 @@ class ChallengeManager:
                     if not challenge_generated:
                         logger.error(f"[ChallengeManager] - {cid_hash} Failed to generate valid challenge after {max_retries} attempts")
                         await self.benchmark.add_failure(
-                            uid= self.uid,
-                            round_id= self.round_id,
-                            address= self.settings.wallet.hotkey.ss58_address,
-                            version= self.settings.version,
-                            failure_type= FailureType.GENERATE_CHALLENGE.value,
-                            cid_hash= cid_hash,
-                            error_msgs= error_msgs
+                            uid=self.uid,
+                            round_id=self.round_id,
+                            address=self.settings.wallet.hotkey.ss58_address,
+                            version=self.settings.version,
+                            failure_type=FailureType.GENERATE_CHALLENGE.value,
+                            cid_hash=cid_hash,
+                            project_phase=project_phase,
+                            error_msgs=error_msgs
                         )
-                        project_score_matrix.append([0.0] * len(uids))
+                        if project_phase != ProjectPhase.WARMUP.value:
+                            project_score_matrix.append([0.0] * len(uids))
                         continue
 
                     if skip_query_miner:
-                        project_score_matrix.append([0.0] * len(uids))
+                        if project_phase != ProjectPhase.WARMUP.value:
+                            project_score_matrix.append([0.0] * len(uids))
                         continue
 
                     # query all miner
@@ -371,15 +380,17 @@ class ChallengeManager:
                         min_latency_improvement_ratio=self.ipc_meta_config.get("min_latency_improvement_ratio", 0.2),
                         round_id=self.round_id
                     )
-                    project_score_matrix.append(zip_scores)
 
-                    # update miners counter
-                    for uid, truth_score in zip(uids, ground_truth_scores):
-                        success_count, total_count = miners_counter.get(uid, (0, 0))
-                        if truth_score >= organic_success_score_threshold:
-                            success_count += 1
-                        total_count += 1
-                        miners_counter[uid] = (success_count, total_count)
+                    if project_phase != ProjectPhase.WARMUP.value:
+                        project_score_matrix.append(zip_scores)
+                        
+                        # update miners counter
+                        for uid, truth_score in zip(uids, ground_truth_scores):
+                            success_count, total_count = miners_counter.get(uid, (0, 0))
+                            if truth_score >= organic_success_score_threshold:
+                                success_count += 1
+                            total_count += 1
+                            miners_counter[uid] = (success_count, total_count)
 
                     table_formatter.create_synthetic_miners_response_table(
                         round_id=self.round_id,
@@ -401,6 +412,7 @@ class ChallengeManager:
                         cid=cid_hash.split('_')[0],
                         challenge_type=ChallengeType.SYNTHETIC.value,
                         challenge_id=challenge_id,
+                        project_phase=project_phase,
                         question=question,
                         question_generator_model_name=self.llm_synthetic.model_name,
                         question_generator_metrics=utils.pick(
@@ -616,7 +628,7 @@ class ChallengeManager:
                         continue
                     logger.info("[ChallengeManager] No historical scores available. Submitting uniform fallback weights.")
 
-                self._set_weights(uids, scores)
+                await self._set_weights(uids, scores)
                 self._last_set_weight_time = time.time()
                 if epoch_info:
                     self._last_epoch_submitted = epoch_info.epoch_index
@@ -698,13 +710,20 @@ class ChallengeManager:
         # uniform_weight = 1.0 / count
         return miner_uids, [0] * count
 
-    def _set_weights(self, uids: list[int], scores: list[float]):
+    async def _set_weights(self, uids: list[int], scores: list[float]):
         logger.info(f"[ChallengeManager] set_weights for uids: {uids}, scores: {scores}")
         scores_np = np.array(scores, dtype=np.float32)
+        burn_ratio = self.ipc_meta_config.get("burn_ratio", 0)
+        burn_uid = self.settings.burn_uid
+        raw_uids_for_upload = [int(uid) for uid in uids]
+        raw_weights_for_upload = [float(score) for score in scores]
 
-        if np.all(scores_np == 0):
-            logger.warning("[ChallengeManager] All scores are zero, burning weights.")
-            burn_uid = self.settings.burn_uid
+        # Check if all scores are zero or burn_ratio is 1 (100% burn)
+        if np.all(scores_np == 0) or burn_ratio >= 1.0:
+            if burn_ratio >= 1.0:
+                logger.warning(f"[ChallengeManager] burn_ratio={burn_ratio}, burning all weights.")
+            else:
+                logger.warning("[ChallengeManager] All scores are zero, burning weights.")
             burn_uids_np = np.array([burn_uid], dtype=np.int64)
             burn_weights_np = np.array([1.0], dtype=np.float32)
             (
@@ -718,13 +737,41 @@ class ChallengeManager:
                 metagraph=self.settings.metagraph,
             )
         else:
+            # Apply burn ratio if configured
+            if burn_ratio > 0 and burn_ratio < 1.0:
+                burn_idx = None
+                if burn_uid in uids:
+                    burn_idx = uids.index(burn_uid)
+                
+                # Calculate scores_sum excluding burn_uid's current weight if it exists
+                if burn_idx is not None:
+                    scores_sum = scores_np.sum() - scores_np[burn_idx]
+                else:
+                    scores_sum = scores_np.sum()
+                
+                if scores_sum > 0:
+                    # Calculate burn weight using correct formula:
+                    # burn_weight / (burn_weight + scores_sum) = burn_ratio
+                    # => burn_weight = scores_sum * burn_ratio / (1 - burn_ratio)
+                    burn_weight = scores_sum * burn_ratio / (1.0 - burn_ratio)
+                    
+                    if burn_idx is not None:
+                        scores_np[burn_idx] = burn_weight
+                        logger.info(f"[ChallengeManager] Updated burn_uid={burn_uid} at index={burn_idx}, burn_ratio={burn_ratio*100:.1f}%, burn_weight={burn_weight:.4f}, miner_sum={scores_sum:.4f}")
+                    else:
+                        uids = [burn_uid] + uids
+                        scores_np = np.concatenate([np.array([burn_weight], dtype=np.float32), scores_np])
+                        logger.info(f"[ChallengeManager] Inserted burn_uid={burn_uid} at index=0, burn_ratio={burn_ratio*100:.1f}%, burn_weight={burn_weight:.4f}, miner_sum={scores_sum:.4f}")
+                else:
+                    logger.warning("[ChallengeManager] Cannot apply burn_ratio with zero scores_sum")
+
             (
                 processed_weight_uids,
                 processed_weights,
             ) = bt.utils.weight_utils.process_weights_for_netuid(
-                    uids = np.array(uids, dtype=np.int64),
+                    uids=np.array(uids, dtype=np.int64),
                     # weights = raw_weights.detach().cpu().numpy().astype(np.float32),
-                    weights = scores_np,
+                    weights=scores_np,
                     netuid=self.settings.netuid,
                     subtensor=self.settings.subtensor,
                     metagraph=self.settings.metagraph,
@@ -741,6 +788,24 @@ class ChallengeManager:
             wait_for_finalization=False,
             version_key=10010,
         )
+        # Convert to regular Python lists for benchmark upload
+        processed_uids_list = processed_weight_uids.tolist() if hasattr(processed_weight_uids, 'tolist') else list(processed_weight_uids)
+        processed_weights_list = [round(float(w), 4) for w in processed_weights]
+
+        await self.benchmark.upload_weights(
+            uid=self.uid,
+            address=self.settings.wallet.hotkey.ss58_address,
+            version=self.settings.version,
+            round_id=self.round_id,
+            raw_uids=raw_uids_for_upload,
+            raw_weights=raw_weights_for_upload,
+            processed_weight_uids=processed_uids_list,
+            processed_weights=processed_weights_list,
+            burn_ratio=burn_ratio,
+            success=suc,
+            error_msg=msg,
+        )
+
         logger.info(f"processed_weights result: {suc, msg}")
 
     async def refresh_agents(self):
@@ -748,6 +813,7 @@ class ChallengeManager:
             while not self.event_stop.is_set():
                 await asyncio.sleep(self.refresh_agents_interval)
                 self.settings.reread()
+                logger.info("[ChallengeManager] refresh_agents ... ")
                 await self.agent_manager.start(pull=True, role="validator", silent=True)
         except Exception as e:
             logger.error(f"[ChallengeManager] refresh_agents error: {e}")

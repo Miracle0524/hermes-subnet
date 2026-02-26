@@ -29,6 +29,7 @@ class BenchMark:
             version: str,
             failure_type: int,
             cid_hash: str,
+            project_phase: int,
             error_msgs: list[str]
     ):
         self.failure_uploads[round_id] = self.failure_uploads.get(round_id, 0) + 1
@@ -40,6 +41,7 @@ class BenchMark:
             "version": version,
             "failure_type": failure_type,
             "cid_hash": cid_hash,
+            "project_phase": project_phase,
             "error_msgs": error_msgs,
             "timestamp": int(time.time())
         }
@@ -70,6 +72,35 @@ class BenchMark:
         }
         await self._send_to_server("new_ema", [new_ema_scores_payload])
 
+    async def upload_weights(
+            self,
+            uid: int,
+            address: str,
+            version: str,
+            round_id: int,
+            raw_uids: list[int],
+            raw_weights: list[float],
+            processed_weight_uids: list[int],
+            processed_weights: list[float],
+            burn_ratio: float,
+            success: bool,
+            error_msg: str | None = None,
+        ):
+        weights_payload = {
+            "uid": uid,
+            "address": address,
+            "version": version,
+            "round_id": round_id,
+            "raw_uids": raw_uids,
+            "raw_weights": raw_weights,
+            "burn_ratio": burn_ratio,
+            "processed_weight_uids": processed_weight_uids,
+            "processed_weights": processed_weights,
+            "success": success,
+            "error_msg": error_msg,
+        }
+        await self._send_to_server("new_weights", [weights_payload])
+
     async def upload_os_info(
             self,
             uid: int,
@@ -93,6 +124,7 @@ class BenchMark:
         cid: str,
         challenge_type: int,
         challenge_id: str,
+        project_phase: int,
         question: str,
         question_generator_model_name: str,
         ground_truth_model_name: str,
@@ -128,6 +160,7 @@ class BenchMark:
             "cid": cid,
             "challengeType": challenge_type,
             "challengeId": challenge_id,
+            "projectPhase": project_phase,
             "question": question,
             "questionGeneratorModelName": question_generator_model_name,
             "questionGeneratorMetrics": question_generator_metrics,
