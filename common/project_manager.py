@@ -145,7 +145,7 @@ class ProjectManager:
             name="",
             phase=ProjectPhase.NORMAL.value,
             metadata=Metadata(
-                cid=cid_hash,
+                cid=config.cid,
                 endpoint=config.endpoint
             )
         ) for cid_hash, config in projects.items()}
