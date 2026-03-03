@@ -223,57 +223,21 @@ Balance:
 ✅ Registered on netuid 2 with UID 2 
 ```
 
-# 6、Run SQT
+# 6、Run SN-Hermes
 
 1、clone
 
 ```shell
-(env_test) [btcli] % cd ../
+$ git clone https://github.com/SN-Hermes/hermes-subnet.git
 
-(env_test) [env_test] git@github.com:subquery/network-hermes-subnet.git
+$ cd hermes-subnet
 
-(env_test) [env_test] cd network-hermes-subnet
+$ uv sync
 
-(env_test) [env_test] git checkout feat/develop
-
-(env_test) [network-hermes-subnet] uv sync
+$ source .venv/bin/activate
 ```
 
-2、modify path：
-
- modify `agent/graphql_agent.py`：
-
-```python
-import os
-import sys
-
-# change to your local subql-graphql-agent path
-sys.path.append(os.path.abspath("/Users/demon/Desktop/work/onf/subql-graphql-agent/examples"))
-
-...
-```
-
-3、`subql-graphql-agent`add a function.
-
-navigate to`subql-graphql-agent/examples/server.py`
-
-```python
-class GraphQLAgent:
-    """GraphQL agent for a specific SubQuery project."""
-
-    ...
-
-    async def query_no_stream(self, question):
-        response = await self.executor.ainvoke(
-            {"messages": [{"role": "user", "content": question}]},
-            config={
-                "recursion_limit": 25,
-            }
-        )
-        return response
-```
-
-4、run validator：
+2、run validator：
 
 * add `.env.validator` file
 
@@ -307,10 +271,10 @@ SCORE_LLM_MODEL=o3
 * run：
 
 ```shell
-(env_test) [network-hermes-subnet] python -m neurons.validator
+(network-hermes-subnet)$ python -m neurons.validator
 ```
 
-5、run miner：
+3、run miner：
 
 * add `.env.miner` file
 
@@ -343,5 +307,5 @@ LLM_MODEL=gpt-4o
 * run：
 
 ```shell
-(env_test) [network-hermes-subnet] python -m neurons.miner
+(network-hermes-subnet)$ python -m neurons.miner
 ```

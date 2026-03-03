@@ -270,7 +270,7 @@ class ChallengeManager:
                     error_msgs = []
                     weight_a = self.ipc_meta_config.get("weight_a", 70)
                     weight_b = self.ipc_meta_config.get("weight_b", 30)
-                    multi_coldkey_penalty = self.ipc_meta_config.get("multi_coldkey_penalty", 0.3)
+                    multi_coldkey_penalty = self.ipc_meta_config.get("multi_coldkey_penalty", 1)
                     q_metrics_data = None
                     project_phase = self.agent_manager.get_project_phase(cid_hash)
 
