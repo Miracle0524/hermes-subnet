@@ -556,6 +556,7 @@ async def main():
                         new_organic_success_score_threshold = new_meta.data.get("organic_success_score_threshold", 5)
                         new_organic_success_rate_threshold = new_meta.data.get("organic_success_rate_threshold", 0.7)
                         new_burn_ratio = new_meta.data.get("burn_ratio", 0)
+                        new_multi_coldkey_penalty = new_meta.data.get("multi_coldkey_penalty", 1)
 
                         current_config = dict(ipc_meta_config)  # Convert to regular dict to minimize lock time
                         
@@ -603,6 +604,10 @@ async def main():
                         if new_burn_ratio != current_config.get("burn_ratio", 0):
                             updates["burn_ratio"] = new_burn_ratio
                             logger.info(f"Updating burn_ratio from {current_config.get('burn_ratio', 0)} to {new_burn_ratio}")
+
+                        if new_multi_coldkey_penalty != current_config.get("multi_coldkey_penalty", 1):
+                            updates["multi_coldkey_penalty"] = new_multi_coldkey_penalty
+                            logger.info(f"Updating multi_coldkey_penalty from {current_config.get('multi_coldkey_penalty', 1)} to {new_multi_coldkey_penalty}")
 
                         if updates:
                             ipc_meta_config.update(updates)
