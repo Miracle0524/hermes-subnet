@@ -2,6 +2,8 @@ from typing import Dict
 from langchain_core.messages import HumanMessage
 from collections import deque
 import difflib
+import json
+from pathlib import Path
 from langgraph.prebuilt import create_react_agent
 
 from langchain_openai import ChatOpenAI
@@ -17,13 +19,30 @@ class QuestionGenerator:
     similarity_threshold: float
     max_retries: int
     project_question_history: Dict[str, deque]
+    save_path: str | None
+    generation_count: int
+    save_interval: int
 
-    def __init__(self, max_history=10, similarity_threshold=0.75, max_retries=3):
+    def __init__(
+        self,
+        max_history=10,
+        similarity_threshold=0.75,
+        max_retries=3,
+        save_path: str | None = None,
+        save_interval: int = 10
+    ):
         self.max_history = max_history
         self.similarity_threshold = similarity_threshold
         self.max_retries = max_retries
         self.project_question_history = {}
+        self.save_path = save_path
+        self.generation_count = 0
+        self.save_interval = save_interval
         
+        # Load existing history if save_path exists
+        if self.save_path:
+            self._load_history()
+
     def format_history_constraint(self, recent_questions: deque) -> str:
         if not recent_questions:
             return ""
@@ -116,6 +135,12 @@ class QuestionGenerator:
 
         if question:
             self.add_to_history(cid_hash, question)
+            
+            # Increment generation count and save if needed
+            self.generation_count += 1
+            if self.save_path and self.generation_count % self.save_interval == 0:
+                self._save_history()
+                self.generation_count = 0
 
         return question, metrics_data, error
 
@@ -141,5 +166,41 @@ class QuestionGenerator:
         if cid_hash in self.project_question_history:
             self.project_question_history[cid_hash].clear()
 
+    def _load_history(self):
+        """Load question history from save_path if it exists"""
+        if not self.save_path:
+            return
+        
+        try:
+            path = Path(self.save_path)
+            if path.exists():
+                with open(path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    # Convert lists back to deques with maxlen
+                    for cid_hash, questions in data.items():
+                        self.project_question_history[cid_hash] = deque(questions, maxlen=self.max_history)
+                logger.info(f"Loaded question history from {self.save_path}")
+        except Exception as e:
+            logger.error(f"Error loading question history from {self.save_path}: {e}")
 
-question_generator = QuestionGenerator(max_history=24)
+    def _save_history(self):
+        """Save question history to save_path"""
+        if not self.save_path:
+            return
+        
+        try:
+            path = Path(self.save_path)
+            # Create parent directory if it doesn't exist
+            path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Convert deques to lists for JSON serialization
+            data = {
+                cid_hash: list(questions)
+                for cid_hash, questions in self.project_question_history.items()
+            }
+            
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            logger.info(f"Saved question history to {self.save_path} (generation count: {self.generation_count})")
+        except Exception as e:
+            logger.error(f"Error saving question history to {self.save_path}: {e}")

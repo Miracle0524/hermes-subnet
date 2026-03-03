@@ -24,7 +24,6 @@ from common.protocol import SyntheticNonStreamSynapse
 from common.settings import Settings
 from common.table_formatter import table_formatter
 import common.utils as utils
-from hermes.validator.question_generator import question_generator
 from hermes.validator.scorer_manager import ScorerManager
 from hermes.validator.workload_manager import WorkloadManager
 from hermes.validator.dendrite import HighConcurrencyDendrite
@@ -201,6 +200,9 @@ class ChallengeManager:
 
     async def challenge_loop(self):
         try:
+            from hermes.validator.question_generator import QuestionGenerator
+            question_generator = QuestionGenerator(max_history=48, save_path=".data/question_history.json")
+
             block_cache: dict[str, int] = {}
             miners_counter: dict[int, tuple[int, int]] = {}  # uid -> [success_count, total_count]
             challenge_interval = self.challenge_interval
