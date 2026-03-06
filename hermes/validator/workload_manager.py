@@ -251,7 +251,7 @@ class WorkloadManager:
 
                         logger.debug(f"[WorkloadManager] Generated task({response.id}) ground truth: {ground_truth}, cost: {ground_cost}, miner.response: {response.response}")
 
-                        zip_scores, ground_truth_scores, elapse_weights, miners_elapse_time = await self.challenge_manager.scorer_manager.compute_challenge_score(
+                        zip_scores, ground_truth_scores, elapse_weights, miners_elapse_time, ground_truth_scores_error = await self.challenge_manager.scorer_manager.compute_challenge_score(
                             ground_truth,
                             ground_cost,
                             [response],
@@ -270,6 +270,7 @@ class WorkloadManager:
                             uids=[miner_uid],
                             responses=[response],
                             ground_truth_scores=ground_truth_scores,
+                            ground_truth_scores_error=ground_truth_scores_error,
                             elapse_weights=elapse_weights,
                             zip_scores=zip_scores,
                             cid=response.cid_hash
@@ -306,6 +307,7 @@ class WorkloadManager:
                                 "graphqlAgentModelName": resp.graphql_agent_model_name[:50],
                                 "elapsed": elapse_time,
                                 "truthScore": truth_score,
+                                "truthScoreError": truth_error,
                                 "statusCode": resp.status_code,
                                 "error": resp.error,
                                 "answer": resp.response[:500] if resp.response and resp.status_code == 200 else None,
@@ -320,7 +322,7 @@ class WorkloadManager:
                                     parsed for t in resp.graphql_agent_inner_tool_calls if (parsed := utils.safe_json_loads(t)) is not None
                                 ] if resp.graphql_agent_inner_tool_calls else [],
                             }
-                            for uid, hotkey, elapse_time, truth_score, resp in zip([miner_uid], [hotkey], miners_elapse_time, ground_truth_scores, [response])
+                            for uid, hotkey, elapse_time, truth_score, truth_error, resp in zip([miner_uid], [hotkey], miners_elapse_time, ground_truth_scores, ground_truth_scores_error, [response])
                         ],
                     )
 

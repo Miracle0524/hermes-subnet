@@ -109,9 +109,12 @@ class ChallengeManager:
         if score_model_api_key:
             score_model_args["api_key"] = score_model_api_key
 
+        score_timeout = int(os.getenv("SCORE_TIMEOUT", 60))
         self.llm_score = ChatOpenAI(
             model=score_model_name,
             temperature=0,
+            timeout=score_timeout,
+            max_retries=3,
             **score_model_args
         )
 
@@ -382,7 +385,13 @@ class ChallengeManager:
                     self.token_usage_metrics.append(metrics_data)
 
                     # score result
-                    zip_scores, ground_truth_scores, elapse_weights, miners_elapse_time = await self.scorer_manager.compute_challenge_score(
+                    (
+                        zip_scores,
+                        ground_truth_scores,
+                        elapse_weights,
+                        miners_elapse_time,
+                        ground_truth_scores_error
+                    ) = await self.scorer_manager.compute_challenge_score(
                         ground_truth,
                         ground_cost,
                         responses,
@@ -419,6 +428,7 @@ class ChallengeManager:
                         hotkeys=hotkeys,
                         responses=responses,
                         ground_truth_scores=ground_truth_scores,
+                        ground_truth_scores_error=ground_truth_scores_error,
                         elapse_weights=elapse_weights,
                         zip_scores=zip_scores,
                         cid=cid_hash,
@@ -458,6 +468,7 @@ class ChallengeManager:
                                 "graphqlAgentModelName": resp.graphql_agent_model_name[:50] if resp.graphql_agent_model_name else "",
                                 "elapsed": elapse_time,
                                 "truthScore": truth_score,
+                                "truthScoreError": score_error[:255] if score_error else "",
                                 "statusCode": resp.status_code,
                                 "error": resp.error,
                                 "answer": resp.response[:500] if resp.response else "",
@@ -473,7 +484,9 @@ class ChallengeManager:
                                     if (parsed := utils.safe_json_loads(t)) is not None
                                 ] if resp.graphql_agent_inner_tool_calls else [],
                             }
-                            for uid, hotkey, elapse_time, truth_score, resp in zip(uids, hotkeys, miners_elapse_time, ground_truth_scores, responses)
+                            for uid, hotkey, elapse_time, truth_score, score_error, resp in zip(
+                                uids, hotkeys, miners_elapse_time, ground_truth_scores, ground_truth_scores_error, responses
+                            )
                             if resp.status_code != ErrorCode.NOT_HEALTHY.value
                         ],
                     )
