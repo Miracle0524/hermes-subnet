@@ -106,13 +106,15 @@ class BenchMark:
             uid: int,
             address: str,
             version: str,
-            cpu_count: int
+            cpu_count: int,
+            projects: list[str]
         ):
         os_info_payload = {
             "uid": uid,
             "address": address,
             "version": version,
             "cpu_count": cpu_count,
+            "projects": projects,
         }
         await self._send_to_server("os_info", [os_info_payload])
 

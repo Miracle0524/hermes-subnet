@@ -176,7 +176,8 @@ class ChallengeManager:
                 uid=self.uid,
                 address=self.settings.wallet.hotkey.ss58_address,
                 version=self.settings.version,
-                cpu_count=self.settings.cpu_count
+                cpu_count=self.settings.cpu_count,
+                projects=list(self.agent_manager.get_projects().keys())
             )
 
             self.task = [
