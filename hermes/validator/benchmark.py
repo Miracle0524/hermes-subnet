@@ -106,13 +106,15 @@ class BenchMark:
             uid: int,
             address: str,
             version: str,
-            cpu_count: int
+            cpu_count: int,
+            projects: list[str]
         ):
         os_info_payload = {
             "uid": uid,
             "address": address,
             "version": version,
             "cpu_count": cpu_count,
+            "projects": projects,
         }
         await self._send_to_server("os_info", [os_info_payload])
 
@@ -136,6 +138,7 @@ class BenchMark:
         ground_input_tokens: int,
         ground_input_cache_read_tokens: int,
         ground_output_tokens: int,
+        block_height: str,
         miners_answer: list[dict[str, any]],
     ):
         """
@@ -172,6 +175,7 @@ class BenchMark:
             "groundInputTokens": ground_input_tokens,
             "groundInputCacheReadTokens": ground_input_cache_read_tokens,
             "groundOutputTokens": ground_output_tokens,
+            "blockHeight": block_height,
             "minersAnswer": miners_answer,
         }
 
