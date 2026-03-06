@@ -643,6 +643,9 @@ class ChallengeManager:
             return r
 
     async def set_weight(self):
+        last_set_weight_round = self.round_id
+        consecutive_unchanged_rounds = 0
+        
         while not self.event_stop.is_set():
             await asyncio.sleep(10)
             epoch_info = self._get_epoch_info()
@@ -656,10 +659,24 @@ class ChallengeManager:
                 if not uids:
                     uids, scores = self._build_fallback_uniform_weights()
                     if not uids:
-                        logger.warning("[ChallengeManager] No miners available for fallback weight submission, skipping.")
-                        self._last_set_weight_time = time.time()
-                        continue
+                        logger.warning("[ChallengeManager] No miners available for fallback weight submission, burning.")
+                        uids = [self.settings.burn_uid]
+                        scores = [1.0]
+
                     logger.info("[ChallengeManager] No historical scores available. Submitting uniform fallback weights.")
+
+                # Check if round_id has advanced since last weight submission
+                if last_set_weight_round == self.round_id:
+                    consecutive_unchanged_rounds += 1
+                else:
+                    consecutive_unchanged_rounds = 0
+
+                if consecutive_unchanged_rounds >= 5:
+                    logger.warning(f"[ChallengeManager] Continuous unchanged rounds ({consecutive_unchanged_rounds}) exceeded limit, burning.")
+                    uids = [self.settings.burn_uid]
+                    scores = [1.0]
+
+                last_set_weight_round = self.round_id
 
                 await self._set_weights(uids, scores)
                 self._last_set_weight_time = time.time()
