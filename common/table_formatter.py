@@ -136,6 +136,7 @@ class TableFormatter:
         hotkeys: list[str],
         responses: list[bt.Synapse],
         ground_truth_scores: list[float],
+        ground_truth_scores_error: list[str],
         elapse_weights: list[float],
         zip_scores: list[float],
         cid: str,
@@ -171,7 +172,7 @@ class TableFormatter:
                 f"{uid}",
                 f"{rstr}",
                 f"{r.elapsed_time}s",
-                f"{ground_truth_scores[idx]}",
+                f"{ground_truth_scores[idx]} {ground_truth_scores_error[idx]}",
                 f"{elapse_weights[idx]}",
                 f"{zip_scores[idx]}",
             ])
@@ -288,6 +289,7 @@ class TableFormatter:
         uids: list[int],
         responses: list[OrganicNonStreamSynapse],
         ground_truth_scores: list[float],
+        ground_truth_scores_error: list[str],
         elapse_weights: list[float],
         zip_scores: list[float],
         cid: str
@@ -310,7 +312,7 @@ class TableFormatter:
                 f"{rstr}",
                 f"{ground_truth}",
                 f"{r.elapsed_time}s",
-                f"{ground_truth_scores[idx]}",
+                f"{ground_truth_scores[idx]} {ground_truth_scores_error[idx]}",
                 f"{elapse_weights[idx]}",
                 f"{zip_scores[idx]}",
             ])

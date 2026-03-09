@@ -109,9 +109,12 @@ class ChallengeManager:
         if score_model_api_key:
             score_model_args["api_key"] = score_model_api_key
 
+        score_timeout = int(os.getenv("SCORE_TIMEOUT", 60))
         self.llm_score = ChatOpenAI(
             model=score_model_name,
             temperature=0,
+            timeout=score_timeout,
+            max_retries=3,
             **score_model_args
         )
 
@@ -173,7 +176,8 @@ class ChallengeManager:
                 uid=self.uid,
                 address=self.settings.wallet.hotkey.ss58_address,
                 version=self.settings.version,
-                cpu_count=self.settings.cpu_count
+                cpu_count=self.settings.cpu_count,
+                projects=list(self.agent_manager.get_projects().keys())
             )
 
             self.task = [
@@ -273,6 +277,7 @@ class ChallengeManager:
                     weight_a = self.ipc_meta_config.get("weight_a", 70)
                     weight_b = self.ipc_meta_config.get("weight_b", 30)
                     multi_coldkey_penalty = self.ipc_meta_config.get("multi_coldkey_penalty", 1)
+                    ema_score_alpha = self.ipc_meta_config.get("ema_score_alpha", 0.5)
                     q_metrics_data = None
                     project_phase = self.agent_manager.get_project_phase(cid_hash)
 
@@ -382,7 +387,13 @@ class ChallengeManager:
                     self.token_usage_metrics.append(metrics_data)
 
                     # score result
-                    zip_scores, ground_truth_scores, elapse_weights, miners_elapse_time = await self.scorer_manager.compute_challenge_score(
+                    (
+                        zip_scores,
+                        ground_truth_scores,
+                        elapse_weights,
+                        miners_elapse_time,
+                        ground_truth_scores_error
+                    ) = await self.scorer_manager.compute_challenge_score(
                         ground_truth,
                         ground_cost,
                         responses,
@@ -419,6 +430,7 @@ class ChallengeManager:
                         hotkeys=hotkeys,
                         responses=responses,
                         ground_truth_scores=ground_truth_scores,
+                        ground_truth_scores_error=ground_truth_scores_error,
                         elapse_weights=elapse_weights,
                         zip_scores=zip_scores,
                         cid=cid_hash,
@@ -449,7 +461,8 @@ class ChallengeManager:
                         ground_input_tokens=metrics_data.get("input_tokens", 0),
                         ground_input_cache_read_tokens=metrics_data.get("input_cache_read_tokens", 0),
                         ground_output_tokens=metrics_data.get("output_tokens", 0),
-                        
+                        block_height=str(block_cache[cid_hash]),
+
                         miners_answer=[
                             {
                                 "uid": uid,
@@ -458,12 +471,15 @@ class ChallengeManager:
                                 "graphqlAgentModelName": resp.graphql_agent_model_name[:50] if resp.graphql_agent_model_name else "",
                                 "elapsed": elapse_time,
                                 "truthScore": truth_score,
+                                "truthScoreError": score_error[:255] if score_error else "",
                                 "statusCode": resp.status_code,
                                 "error": resp.error,
                                 "answer": resp.response[:500] if resp.response else "",
                                 "inputTokens": resp.usage_info.get("input_tokens", 0) if resp.usage_info else 0,
                                 "inputCacheReadTokens": resp.usage_info.get("input_cache_read_tokens", 0) if resp.usage_info else 0,
                                 "outputTokens": resp.usage_info.get("output_tokens", 0) if resp.usage_info else 0,
+                                "forwardStartTime": resp.forward_start_time or 0,
+                                "recvStartTime": resp.recv_start_time or 0,
                                 "toolCalls": [
                                     parsed for t in resp.usage_info.get("tool_calls", []) if (parsed := utils.safe_json_loads(t)) is not None
                                 ] if resp.usage_info else [],
@@ -473,7 +489,9 @@ class ChallengeManager:
                                     if (parsed := utils.safe_json_loads(t)) is not None
                                 ] if resp.graphql_agent_inner_tool_calls else [],
                             }
-                            for uid, hotkey, elapse_time, truth_score, resp in zip(uids, hotkeys, miners_elapse_time, ground_truth_scores, responses)
+                            for uid, hotkey, elapse_time, truth_score, score_error, resp in zip(
+                                uids, hotkeys, miners_elapse_time, ground_truth_scores, ground_truth_scores_error, responses
+                            )
                             if resp.status_code != ErrorCode.NOT_HEALTHY.value
                         ],
                     )
@@ -489,7 +507,8 @@ class ChallengeManager:
                     hotkeys,
                     project_score_matrix,
                     workload_score,
-                    challenge_id=challenge_id
+                    challenge_id=challenge_id,
+                    ema_score_alpha=ema_score_alpha
                 )
                 self.ipc_synthetic_score[0] = self.scorer_manager.get_last_synthetic_scores()
                 self.ipc_synthetic_score[1] = miners_counter
@@ -630,6 +649,9 @@ class ChallengeManager:
             return r
 
     async def set_weight(self):
+        last_set_weight_round = self.round_id
+        consecutive_unchanged_rounds = 0
+        
         while not self.event_stop.is_set():
             await asyncio.sleep(10)
             epoch_info = self._get_epoch_info()
@@ -643,10 +665,24 @@ class ChallengeManager:
                 if not uids:
                     uids, scores = self._build_fallback_uniform_weights()
                     if not uids:
-                        logger.warning("[ChallengeManager] No miners available for fallback weight submission, skipping.")
-                        self._last_set_weight_time = time.time()
-                        continue
+                        logger.warning("[ChallengeManager] No miners available for fallback weight submission, burning.")
+                        uids = [self.settings.burn_uid]
+                        scores = [1.0]
+
                     logger.info("[ChallengeManager] No historical scores available. Submitting uniform fallback weights.")
+
+                # Check if round_id has advanced since last weight submission
+                if last_set_weight_round == self.round_id:
+                    consecutive_unchanged_rounds += 1
+                else:
+                    consecutive_unchanged_rounds = 0
+
+                if consecutive_unchanged_rounds >= 5:
+                    logger.warning(f"[ChallengeManager] Continuous unchanged rounds ({consecutive_unchanged_rounds}) exceeded limit, burning.")
+                    uids = [self.settings.burn_uid]
+                    scores = [1.0]
+
+                last_set_weight_round = self.round_id
 
                 await self._set_weights(uids, scores)
                 self._last_set_weight_time = time.time()

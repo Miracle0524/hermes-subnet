@@ -180,7 +180,13 @@ async def run_mock_validator():
                 return
 
             # calculate score
-            zip_scores, ground_truth_scores, elapse_weights, miners_elapse_time = await challenge_manager.scorer_manager.compute_challenge_score(
+            (
+                zip_scores,
+                ground_truth_scores,
+                elapse_weights,
+                miners_elapse_time,
+                ground_truth_scores_error
+            ) = await challenge_manager.scorer_manager.compute_challenge_score(
                 ground_truth,
                 ground_cost,
                 [r],
@@ -201,6 +207,7 @@ async def run_mock_validator():
                 hotkeys=[settings.wallet.hotkey.ss58_address],
                 responses=[r],
                 ground_truth_scores=ground_truth_scores,
+                ground_truth_scores_error=ground_truth_scores_error,
                 elapse_weights=elapse_weights,
                 zip_scores=zip_scores,
                 cid=cid_hash,
