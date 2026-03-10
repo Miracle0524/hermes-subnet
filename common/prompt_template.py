@@ -11,32 +11,82 @@ Task: Generate ONE natural question about numerical data from the schema above.
 Definitions:
 - "Numerical value" means a single count, sum, average, percentage, or other numeric metric.
 - Each question must involve exactly ONE metric.
-- If the output would be a list, show only the first 3 results.
-- If the output would be a list with superlative comparisons (highest, largest, most, best, etc.), do not always use the same phrasing. 
-  Instead, randomly choose:
-  (1) Ask for the top 3 results. 
-  (2) Ask only for the single highest/largest result. 
-  Vary the wording naturally so the questions do not all look alike.
 
 CRITICAL CONSTRAINT - MUST AVOID REPETITION:
 {recent_questions}
 
-Your task:
-1. Ask about a specific numerical value, metric, or calculation.
-2. Carefully read and understand the schema, including types, queries, mutations, and relationships.
-3. Each question must focus on a single data point or calculation
-5. Ask for ONLY ONE metric or value - do not use "and" or "or" to combine multiple questions.
-6. Do not include explanations, answers, or more than one question.
-7. Ask about what CAN be queried, not specific made-up scenarios.
-8. NEVER fabricate wallet addresses, entity IDs, or any specific data values.
-9. ABSOLUTELY DO NOT generate questions that are similar to the ones listed above in CRITICAL CONSTRAINT section.
-10. IMPORTANT: Do not ask questions that require additional user input or context to be answerable. Avoid questions with unclear references like "my agreement", "my rewards", or "my tokens" without specifying which specific entity is being referenced.
-11. Verify that the question can be answered by examining the available fields, types, and relationships in the schema before generating it.
-12. Do NOT ask hypothetical questions (like "What would happen if...", "How might...", "What could...", "For a specified ..."). Only ask direct factual questions about actual data.
-13. Do NOT ask question which has placeholders in the question.
-14. CRITICAL: Ask business-oriented questions that real users would ask, DO NOT mention any specific data structures or entity names. Real users don't know about backend schema details. Instead, ask about business concepts.
-15. CRITICAL: DO NOT use vague or generic phrases like "a specific X", "a particular Y", "certain Z", "for a given...", "for an entity...", etc. These make questions unanswerable without additional context. Instead, ask about: (a) aggregated data across ALL items (e.g., "What is the total...", "How many...", "What is the average..."), or (b) superlative queries that identify specific items (e.g., "Which one has the highest...", "What is the largest..."). Questions must be concrete and directly answerable from the schema.
-16. CRITICAL OUTPUT FORMAT: Output ONLY the question text itself. DO NOT include any thinking process, reasoning, explanations, or tags like <thinking>, <reasoning>, or any other XML-style tags. DO NOT include phrases like "Here's the question:", "The question is:", or any other prefixes. If you cannot generate a valid question, return an empty string "". Just output the pure question text or nothing.
+QUESTION GENERATION WORKFLOW (Follow steps in order):
+
+Step 1: Analyze Schema - Identify Core Business Entities
+  Action: Carefully read the GraphQL schema and identify ALL primary entities/types
+  Output: List ALL different entities with their:
+    - Entity name
+    - Key numerical attributes (counts, amounts, totals, averages, rates, etc.)
+    - Available query operations
+  
+Step 2: Random Selection - Pick ONE Entity
+  Action: From the list in Step 1, RANDOMLY select ONE entity
+  Requirement: The selection MUST vary across different question generations
+  ⚠️ Do NOT always pick the same entity type or key numerical attribute
+
+Step 3: Generate Question - Create ONE Numerical Question
+  Action: Generate ONE question about a numerical metric from the selected entity
+  Requirements:
+    - Focus on ONE specific numerical value or calculation
+    - Must be directly answerable from the schema
+    - Must be clear and unambiguous
+  
+  Apply these constraints during generation:
+  
+  ✅ MUST DO:
+  • Ask about numerical values, metrics, or calculations
+  • Keep questions SHORT and STRAIGHTFORWARD
+  • Use business concepts that real users would understand
+  • Ask about aggregated data: "What is the total...", "How many...", "What is the average..."
+  • OR ask superlative queries: "Which one has the highest...", "What is the largest..."
+  • Verify the question is answerable from available schema fields
+  
+  ❌ MUST NOT DO:
+  • Do NOT use "and" or "or" to combine multiple questions
+  • Do NOT fabricate wallet addresses, entity IDs, or specific data values
+  • Do NOT ask questions similar to those in CRITICAL CONSTRAINT section
+  • Do NOT use vague phrases: "a specific X", "a particular Y", "for a given...", "for an entity..."
+  • Do NOT mention technical schema details (type names, field names from backend)
+  • Do NOT ask hypothetical questions: "What would happen if...", "How might...", "What could..."
+  • Do NOT include placeholders or unclear references: "my agreement", "my rewards"
+  • Do NOT ask questions requiring additional user input or context
+  • Do NOT include any explanations, thinking process, or extra text
+  • Do NOT add unnecessary modifiers or qualifiers, Keep questions SHORT and DIRECT without extra descriptive clauses
+  
+  📝 Question Type Guidelines (IMPORTANT - Vary Your Question Types):
+  
+  Randomly choose ONE of these question types:
+  
+  Type A: Single Aggregated Value (50% probability)
+    • Ask for ONE numerical metric across all entities
+    • Examples: "What is the total ...?", "How many ...?", "What is the average ...?"
+    • Returns ONE number as answer
+  
+  Type B: Superlative Query - Single Result (25% probability)
+    • Ask for the highest/lowest/largest/smallest/most/least
+    • Examples: "Which [entity] has the highest [attribute]?", "What is the largest ...?"
+    • Returns ONE entity/value as answer
+  
+  Type C: Superlative Query - Top N List (25% probability)
+    • Ask for top/bottom N items (where N is typically 3)
+    • Examples: "What are the top 3 ...?", "Which 3 ...?"
+    • Returns a short list (3 items) as answer
+  
+  ⚠️ CRITICAL: Do NOT always use Type C (lists). Vary between all three types randomly!
+
+---
+
+OUTPUT FORMAT (CRITICAL):
+Output ONLY the pure question text, nothing else.
+- NO thinking process or reasoning
+- NO XML-style tags (<thinking>, <reasoning>, etc.)
+- NO prefixes ("Here's the question:", "The question is:", etc.)
+- If unable to generate a valid question, return empty string ""
 
 
 Output: [Question only, no explanations, no thinking process, no tags]
@@ -156,70 +206,71 @@ Definitions:
 CRITICAL CONSTRAINT - MUST AVOID REPETITION:
 {recent_questions}
 
+INFERENCE RULES
 {postgraphile_rules}
 
-QUESTION GENERATION WORKFLOW:
+QUESTION GENERATION WORKFLOW (Follow steps in order):
 
-Step 1: Decide the question type (choose ONE based on probability weights):
-  Choose based on weighted probability: A ({weight_a}%), B ({weight_b}%)
+Step 1: Analyze Schema - Identify Core Business Entities
+  Action: Carefully read the GraphQL schema and identify ALL primary entities/types
+  Output: List ALL different entities with their:
+    - Entity name
+    - Key numerical attributes (counts, amounts, totals, averages, rates, etc.)
+    - Available query operations
+  
+Step 2: Random Selection - Pick ONE Entity
+  Action: From the list in Step 1, RANDOMLY select ONE entity
+  Requirement: The selection MUST vary across different question generations
+  ⚠️ Do NOT always pick the same entity type or key numerical attribute
 
-  A. Standard questions (Weight: {weight_a}%)
-      → NO TOOL CALL NEEDED - Just follow the existing rules and output the question
-      
-      ⚠️ CRITICAL CONSTRAINT FOR TYPE A QUESTIONS - NO SPECIFIC ENTITY IDENTIFIERS:
-      - DO NOT include ANY specific entity identifiers (wallet addresses, IDs, account numbers, transaction hashes, etc.)
-      - Type A questions must be answerable WITHOUT knowing any specific entity identifier in advance
-      - Ask ONLY about:
-        (1) Aggregated data across ALL entities (total, count, average, sum, etc.)
-        (2) Superlative comparisons that identify entities (highest, lowest, largest, smallest, most, least, etc.)
-      - If you want to ask about a specific entity identifier, you MUST use Type B workflow instead
-      
-      - If the output would be a list, show only the first 3 results.
-      - If the output would be a list with superlative comparisons (highest, largest, most, best, etc.), do not always use the same phrasing. 
-      Instead, randomly choose:
-         (1) Ask for the top 3 results. 
-         (2) Ask only for the single highest/largest result. 
-         Vary the wording naturally so the questions do not all look alike.
+Step 3: Query Real Data - Use Tool to Get Actual Values
+  Action: Generate and execute a GraphQL query to retrieve real data
+  Requirements:
+    - Apply the inference rules and query patterns provided in INFERENCE RULES
+    - Query the selected entity to retrieve up to 5 records
+    - Use graphql_query_validator_execute tool to execute the query
+    - Extract real entity identifiers (IDs, addresses, or other core identifiers) from the results
 
-  B. Entity-based questions (Weight: {weight_b}%)
-     Generate questions by first querying real data from the system.
-     → EXECUTION ORDER:
-       Step B.1: Analyze the schema to identify ALL core business entities
-         - Identify ALL primary entities/types in this schema (aim for 3-5 entities minimum)
-         - For each entity, note their key numerical attributes
-         - List out multiple candidate entities with their numerical fields
-         - RANDOMLY select ONE entity from the candidates to focus on
-         - The selection should vary across different question generations
-       
-       Step B.2: Generate GraphQL query following the rules above
-         - Apply the inference rules and query patterns provided
-         - Query the selected entity to retrieve up to 5 records
-         - Use graphql_query_validator_execute tool to execute the query
-       
-       Step B.3: Generate question based on returned data
-         - The returned data is ONLY used as reference material for question generation, NOT for answering
-         - Extract real entity identifiers (IDs, addresses, or other core business identifiers) from the query results
-         - Use these REAL identifiers to construct a NEW question about DIFFERENT numerical metrics
-         - The generated question MUST ask about numerical attributes that were NOT included in the original query
-         - Focus on asking about related but different metrics of the same entity
-         - Ensure the question requires a new query to answer, not just reading the data you already retrieved
+Step 4: Generate Question - Create ONE Numerical Question Based on Real Data
+  Action: Use the real data from Step 3 to generate ONE question about DIFFERENT metrics
+  Requirements:
+    - The returned data is ONLY reference material, NOT for answering
+    - Use REAL identifiers from query results (DO NOT fabricate)
+    - Ask about numerical attributes NOT included in the original query
+    - Focus on related but different metrics of the same entity
+    - The question must require a new query to answer
+  
+  Apply these constraints during generation:
+  
+  ✅ MUST DO:
+  • Ask about numerical values, metrics, or calculations
+  • Keep questions SHORT and STRAIGHTFORWARD
+  • Use business concepts that real users would understand
+  • Use REAL entity identifiers from the query results
+  • Ask about different metrics than what was queried
+  • Verify the question is answerable from available schema fields
+  
+  ❌ MUST NOT DO:
+  • Do NOT use "and" or "or" to combine multiple questions
+  • Do NOT fabricate wallet addresses, entity IDs, or specific data values
+  • Do NOT ask questions similar to those in CRITICAL CONSTRAINT section
+  • Do NOT use vague phrases: "a specific X", "a particular Y", "for a given...", "for an entity..."
+  • Do NOT mention technical schema details (type names, field names from backend)
+  • Do NOT ask hypothetical questions: "What would happen if...", "How might...", "What could..."
+  • Do NOT include placeholders or unclear references: "my agreement", "my rewards"
+  • Do NOT ask questions requiring additional user input or context
+  • Do NOT include any explanations, thinking process, or extra text
+  • Do NOT add unnecessary modifiers or qualifiers
+  • Do NOT ask about the same metrics that were in the query
 
-Your task:
-1. Carefully read and understand the schema, including types, queries, mutations, and relationships.
-2. Ask about a specific numerical value, metric, or calculation.
-3. Each question must focus on a single data point or calculation
-5. Ask for ONLY ONE metric or value - do not use "and" or "or" to combine multiple questions.
-6. Do not include explanations, answers, or more than one question.
-7. Ask about what CAN be queried, not specific made-up scenarios.
-8. NEVER fabricate wallet addresses, entity IDs, or any specific data values.
-9. ABSOLUTELY DO NOT generate questions that are similar to the ones listed above in CRITICAL CONSTRAINT section.
-10. IMPORTANT: Do not ask questions that require additional user input or context to be answerable. Avoid questions with unclear references like "my agreement", "my rewards", or "my tokens" without specifying which specific entity is being referenced.
-11. Verify that the question can be answered by examining the available fields, types, and relationships in the schema before generating it.
-12. Do NOT ask hypothetical questions (like "What would happen if...", "How might...", "What could...", "For a specified ..."). Only ask direct factual questions about actual data.
-13. Do NOT ask question which has placeholders in the question.
-14. CRITICAL: Ask business-oriented questions that real users would ask, DO NOT mention any specific data structures or entity names. Real users don't know about backend schema details. Instead, ask about business concepts.
-15. CRITICAL: DO NOT use vague or generic phrases like "a specific X", "a particular Y", "certain Z", "for a given...", "for an entity...", etc. These make questions unanswerable without additional context. Instead, ask about: (a) aggregated data across ALL items (e.g., "What is the total...", "How many...", "What is the average..."), or (b) superlative queries that identify specific items (e.g., "Which one has the highest...", "What is the largest..."). Questions must be concrete and directly answerable from the schema.
-16. CRITICAL OUTPUT FORMAT: Output ONLY the question text itself. DO NOT include any thinking process, reasoning, explanations, or tags like <thinking>, <reasoning>, or any other XML-style tags. DO NOT include phrases like "Here's the question:", "The question is:", or any other prefixes. If you cannot generate a valid question, return an empty string "". Just output the pure question text or nothing.
+---
+
+OUTPUT FORMAT (CRITICAL):
+Output ONLY the pure question text, nothing else.
+- NO thinking process or reasoning
+- NO XML-style tags (<thinking>, <reasoning>, etc.)
+- NO prefixes ("Here's the question:", "The question is:", etc.)
+- If unable to generate a valid question, return empty string ""
 
 
 Output: [Question only, no explanations, no thinking process, no tags]
@@ -231,8 +282,8 @@ SYNTHETIC_PROMPT_FALLBACK = PromptTemplate(
     template=synthetic_challenge_template_V4
 )
 
-SYNTHETIC_PROMPT = PromptTemplate(
-    input_variables=["entity_schema", "recent_questions", "postgraphile_rules", "weight_a", "weight_b"],
+SYNTHETIC_PROMPT_WITH_TOOLS = PromptTemplate(
+    input_variables=["entity_schema", "recent_questions", "postgraphile_rules"],
     template=synthetic_challenge_template_V7
 )
 

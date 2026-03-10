@@ -441,7 +441,7 @@ class ChallengeManager:
                         uid=self.V.uid,
                         address=self.settings.wallet.hotkey.ss58_address,
                         version=self.settings.version,
-                        cid=cid_hash.split('_')[0],
+                        cid=cid_hash,
                         challenge_type=ChallengeType.SYNTHETIC.value,
                         challenge_id=challenge_id,
                         project_phase=project_phase,
@@ -480,14 +480,19 @@ class ChallengeManager:
                                 "outputTokens": resp.usage_info.get("output_tokens", 0) if resp.usage_info else 0,
                                 "forwardStartTime": resp.forward_start_time or 0,
                                 "recvStartTime": resp.recv_start_time or 0,
-                                "toolCalls": [
-                                    parsed for t in resp.usage_info.get("tool_calls", []) if (parsed := utils.safe_json_loads(t)) is not None
-                                ] if resp.usage_info else [],
+                                # "toolCalls": [
+                                #     parsed for t in resp.usage_info.get("tool_calls", []) if (parsed := utils.safe_json_loads(t)) is not None
+                                # ] if resp.usage_info else [],
+                                "toolCalls": [],
+                                "toolCallsRaw": resp.usage_info.get("tool_calls", []) if resp.usage_info else [],
                                 
-                                "graphqlAgentInnerToolCalls": [
-                                    parsed for t in resp.graphql_agent_inner_tool_calls 
-                                    if (parsed := utils.safe_json_loads(t)) is not None
-                                ] if resp.graphql_agent_inner_tool_calls else [],
+                                # "graphqlAgentInnerToolCalls": [
+                                #     parsed for t in resp.graphql_agent_inner_tool_calls 
+                                #     if (parsed := utils.safe_json_loads(t)) is not None
+                                # ] if resp.graphql_agent_inner_tool_calls else [],
+
+                                "graphqlAgentInnerToolCalls": [],
+                                "graphqlAgentInnerToolCallsRaw": resp.graphql_agent_inner_tool_calls if resp.graphql_agent_inner_tool_calls else [],
                             }
                             for uid, hotkey, elapse_time, truth_score, score_error, resp in zip(
                                 uids, hotkeys, miners_elapse_time, ground_truth_scores, ground_truth_scores_error, responses
