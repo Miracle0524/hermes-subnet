@@ -1,3 +1,4 @@
+import random
 from typing import Dict
 from langchain_core.messages import HumanMessage
 from collections import deque
@@ -12,7 +13,7 @@ from loguru import logger
 from agent.stats import Phase, TokenUsageMetrics
 from agent.subquery_graphql_agent.base import ProjectConfig, create_graphql_toolkit
 from agent.subquery_graphql_agent.tools import GraphQLSchemaInfoTool
-from common.prompt_template import SYNTHETIC_PROMPT, SYNTHETIC_PROMPT_FALLBACK
+from common.prompt_template import SYNTHETIC_PROMPT_WITH_TOOLS, SYNTHETIC_PROMPT_FALLBACK
 
 class QuestionGenerator:
     max_history: int
@@ -81,12 +82,10 @@ class QuestionGenerator:
                 )
                 tools = toolkit.get_tools()
                 schema_info_tool: GraphQLSchemaInfoTool = tools[0]
-                prompt = SYNTHETIC_PROMPT.format(
+                prompt = SYNTHETIC_PROMPT_WITH_TOOLS.format(
                     entity_schema=project.schema_content,
                     recent_questions=recent_questions,
                     postgraphile_rules=schema_info_tool.postgraphile_rules,
-                    weight_a=weight_a,
-                    weight_b=weight_b
                 )
                 temp_executor = create_react_agent(
                     model=llm,
@@ -129,9 +128,11 @@ class QuestionGenerator:
                 logger.error(f"Error generating fallback question for project {cid_hash}: {e}")
                 return "", None, f"{e}"
 
-        question, metrics_data, error = await try_with_tools()
-        if not question:
+        v = random.randint(0, 100)
+        if v <= weight_a:
             question, metrics_data, error = await try_with_fallback()
+        else:
+            question, metrics_data, error = await try_with_tools()
 
         if question:
             self.add_to_history(cid_hash, question)
