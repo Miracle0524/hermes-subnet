@@ -234,6 +234,8 @@ class WorkloadManager:
                         question = response.get_question()
                         logger.debug(f"[WorkloadManager] compute organic task({response.id}) for miner: {miner_uid}, response: {response}. question: {question}")
 
+                        project_phase = self.challenge_manager.agent_manager.get_project_phase(response.cid_hash)
+
                         success, ground_truth, ground_cost, metrics_data, model_name = await self.challenge_manager.generate_ground_truth(
                             cid_hash=response.cid_hash,
                             question=question,
@@ -249,7 +251,7 @@ class WorkloadManager:
 
                         logger.debug(f"[WorkloadManager] Generated task({response.id}) ground truth: {ground_truth}, cost: {ground_cost}, miner.response: {response.response}")
 
-                        zip_scores, ground_truth_scores, elapse_weights, miners_elapse_time = await self.challenge_manager.scorer_manager.compute_challenge_score(
+                        zip_scores, ground_truth_scores, elapse_weights, miners_elapse_time, ground_truth_scores_error = await self.challenge_manager.scorer_manager.compute_challenge_score(
                             ground_truth,
                             ground_cost,
                             [response],
@@ -263,10 +265,12 @@ class WorkloadManager:
                         table_formatter.create_workload_summary_table(
                             round_id=self.round_id,
                             challenge_id=response.id,
+                            project_phase_str=utils.get_project_phase_str(project_phase),
                             ground_truth=ground_truth,
                             uids=[miner_uid],
                             responses=[response],
                             ground_truth_scores=ground_truth_scores,
+                            ground_truth_scores_error=ground_truth_scores_error,
                             elapse_weights=elapse_weights,
                             zip_scores=zip_scores,
                             cid=response.cid_hash
@@ -275,8 +279,10 @@ class WorkloadManager:
                         await self.benchmark.upload(
                             uid=self.V.uid,
                             address=self.V.settings.wallet.hotkey.ss58_address,
+                            version=self.V.settings.version,
                             cid=response.cid_hash.split('_')[0],
                             challenge_id=response.id,
+                            project_phase=project_phase,
                             challenge_type=ChallengeType.ORGANIC_STREAM.value,
                             question=response.get_question(),
 
@@ -286,7 +292,9 @@ class WorkloadManager:
 
                             ground_truth=ground_truth[:500] if ground_truth else None,
                             ground_cost=ground_cost,
-                            ground_truth_tools=[json.loads(t) for t in metrics_data.get("tool_calls", [])],
+                            ground_truth_tools=[
+                                parsed for t in metrics_data.get("tool_calls", []) if (parsed := utils.safe_json_loads(t)) is not None
+                            ],
                             ground_input_tokens=metrics_data.get("input_tokens", 0),
                             ground_input_cache_read_tokens=metrics_data.get("input_cache_read_tokens", 0),
                             ground_output_tokens=metrics_data.get("output_tokens", 0),
@@ -299,16 +307,22 @@ class WorkloadManager:
                                 "graphqlAgentModelName": resp.graphql_agent_model_name[:50],
                                 "elapsed": elapse_time,
                                 "truthScore": truth_score,
+                                "truthScoreError": truth_error,
                                 "statusCode": resp.status_code,
                                 "error": resp.error,
                                 "answer": resp.response[:500] if resp.response and resp.status_code == 200 else None,
                                 "inputTokens": resp.usage_info.get("input_tokens", 0) if resp.usage_info else 0,
                                 "inputCacheReadTokens": resp.usage_info.get("input_cache_read_tokens", 0) if resp.usage_info else 0,
                                 "outputTokens": resp.usage_info.get("output_tokens", 0) if resp.usage_info else 0,
-                                "toolCalls": [json.loads(t) for t in resp.usage_info.get("tool_calls", [])] if resp.usage_info else [],
-                                "graphqlAgentInnerToolCalls": [json.loads(t) for t in resp.graphql_agent_inner_tool_calls] if resp.graphql_agent_inner_tool_calls else [],
+                                "toolCalls": [
+                                    parsed for t in resp.usage_info.get("tool_calls", []) if (parsed := utils.safe_json_loads(t)) is not None
+                                ] if resp.usage_info else [],
+
+                                "graphqlAgentInnerToolCalls": [
+                                    parsed for t in resp.graphql_agent_inner_tool_calls if (parsed := utils.safe_json_loads(t)) is not None
+                                ] if resp.graphql_agent_inner_tool_calls else [],
                             }
-                            for uid, hotkey, elapse_time, truth_score, resp in zip([miner_uid], [hotkey], miners_elapse_time, ground_truth_scores, [response])
+                            for uid, hotkey, elapse_time, truth_score, truth_error, resp in zip([miner_uid], [hotkey], miners_elapse_time, ground_truth_scores, ground_truth_scores_error, [response])
                         ],
                     )
 

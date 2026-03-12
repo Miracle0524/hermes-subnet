@@ -17,9 +17,11 @@
 # DEALINGS IN THE SOFTWARE.
 
 import asyncio
+from datetime import datetime
 import json
 import os
 from pathlib import Path
+import sys
 import time
 import bittensor as bt
 from langchain_openai import ChatOpenAI
@@ -58,6 +60,10 @@ class Miner(BaseNeuron):
                 error_file=f"{LOGGER_DIR}/{self.role}_error.log"
             )
         super().__init__()
+        
+        # Event to signal that agents are ready
+        self.agents_ready_event = asyncio.Event()
+        self._mock_config_shm = None
 
     async def start(self):
         try:
@@ -124,9 +130,35 @@ class Miner(BaseNeuron):
                 )
             ]
 
+            if self.settings.is_running_mock_mode:
+                logger.info("[Miner] Mock mode enabled - waiting for agents to be ready...")
+                try:
+                    await asyncio.wait_for(self.agents_ready_event.wait(), timeout=60 * 5)
+                except asyncio.TimeoutError:
+                    logger.error("[Miner] Timeout waiting for agents to be ready")
+                    raise RuntimeError("Agents failed to initialize within 5 mins")
+                logger.info("[Miner] Agents are ready - setting up mock configuration...")
+                
+                from common.mock_config import MockConfigSharedMemory
+                mock_config = MockConfigSharedMemory()
+                config_data = {
+                    "uid": self.uid,
+                    "external_ip": self.settings.external_ip,
+                    "port": self.settings.port,
+                    "miner_project_dir": str(self.agent_manager.save_project_dir),
+                    "env_file": self.settings.env_file,
+                }
+                
+                # Write to shared memory
+                if mock_config.write(config_data):
+                    logger.info("[Miner] ✅ Mock configuration written to shared memory")
+                    self._mock_config_shm = mock_config
+                else:
+                    raise RuntimeError("[Miner] Failed to write configuration to shared memory")
+
             await asyncio.gather(*self._running_tasks)
-        except KeyboardInterrupt:
-            logger.info("[Miner] Miner start process interrupted by user")
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            logger.info("[Miner] Miner start process interrupted")
             # Cancel all running tasks
             if hasattr(self, '_running_tasks'):
                 for task in self._running_tasks:
@@ -134,11 +166,19 @@ class Miner(BaseNeuron):
                         task.cancel()
                 # Wait for tasks to complete cancellation
                 await asyncio.gather(*self._running_tasks, return_exceptions=True)
-            logger.info("[Miner] All tasks cancelled successfully")
             raise  # Re-raise to allow graceful shutdown at higher level
         except Exception as e:
             logger.error(f"[Miner] Failed to start miner: {e}")
             raise
+        finally:
+            # Always cleanup shared memory on exit
+            if self._mock_config_shm:
+                logger.info("[Miner] Cleaning up shared memory...")
+                try:
+                    self._mock_config_shm.cleanup(unlink=True)  # Miner is the owner, so unlink
+                    logger.info("[Miner] Shared memory cleaned up")
+                except Exception as e:
+                    logger.warning(f"[Miner] Error cleaning up shared memory: {e}")
 
     async def db_writer(self):
         try:
@@ -285,8 +325,9 @@ class Miner(BaseNeuron):
         r: dict
     ) -> tuple[str | None, dict, list, list[str], str | None, str | None, ErrorCode]:
         # logger.info(f"[{tag}] - {task.id} Agent response: {r}")
-
-        usage_info = self.token_usage_metrics.append(task.cid_hash, phase, r)
+        
+        usage_info = self.token_usage_metrics.parse(task.cid_hash, phase, r)
+        self.token_usage_metrics.append(usage_info)
 
         # check tool stats
         tool_hit = utils.try_get_tool_hit(
@@ -378,7 +419,11 @@ class Miner(BaseNeuron):
         })
 
     async def forward_synthetic_non_stream(self, task: SyntheticNonStreamSynapse) -> SyntheticNonStreamSynapse:
+        now = int(datetime.now().timestamp())
         log = logger.bind(source=task.dendrite.hotkey)
+        log.info(f"[Miner] receiving synthetic task: {task.id} at {now}")
+
+        task.recv_start_time = now
         await self._handle_task(task, log)
         return task
 
@@ -564,10 +609,18 @@ class Miner(BaseNeuron):
         logger.info(f"[MINER] Using KEY: {utils.format_openai_key()}")
 
         silent = False
+        first_load_complete = False
         while True:
             try:
                 self.settings.reread()
                 await self.agent_manager.start(mode == "pull", role="miner", silent=silent)
+                
+                # Signal that agents are ready after first successful load
+                if not first_load_complete:
+                    first_load_complete = True
+                    self.agents_ready_event.set()
+                    logger.info("[MINER] Agents initialized and ready - event signaled")
+                
                 silent = True
                 mode = 'pull'  # after first load, always pull updates
             except Exception as e:
@@ -587,7 +640,6 @@ class Miner(BaseNeuron):
             logger.error(f"[Miner] Profile tools stats error: {e}")
             raise
 
-
 if __name__ == "__main__":
     try:
         miner = Miner()
@@ -598,10 +650,9 @@ if __name__ == "__main__":
             time.sleep(60 * 2)
     except KeyboardInterrupt:
         logger.info("[Miner] Received interrupt signal, shutting down gracefully...")
-        # Additional cleanup can be added here if needed
-        logger.info("[Miner] Shutdown complete")
     except Exception as e:
         logger.error(f"[Miner] Unexpected error: {e}")
-        raise
-
-
+        logger.exception(e)
+    finally:
+        logger.info("[Miner] Shutdown complete")
+        sys.exit(0)

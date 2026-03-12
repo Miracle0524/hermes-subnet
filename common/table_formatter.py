@@ -104,6 +104,7 @@ class TableFormatter:
         self,
         round_id: str,
         challenge_id: str,
+        project_phase_str: str,
         cid: str,
         question: str,
         success: bool,
@@ -111,7 +112,7 @@ class TableFormatter:
         ground_cost: float,
         metrics_data: dict | None = None
     ):
-        header = "🤖 Synthetic Challenge" + f" ({round_id} | {challenge_id})"
+        header = f"🤖 Synthetic Challenge({project_phase_str}) ({round_id} | {challenge_id})"
         rows = [
             f"❓ Question: {question}\n",
             f"🎯 Ground Truth: {None if not success else ground_truth}\n",
@@ -135,6 +136,7 @@ class TableFormatter:
         hotkeys: list[str],
         responses: list[bt.Synapse],
         ground_truth_scores: list[float],
+        ground_truth_scores_error: list[str],
         elapse_weights: list[float],
         zip_scores: list[float],
         cid: str,
@@ -170,7 +172,7 @@ class TableFormatter:
                 f"{uid}",
                 f"{rstr}",
                 f"{r.elapsed_time}s",
-                f"{ground_truth_scores[idx]}",
+                f"{ground_truth_scores[idx]} {ground_truth_scores_error[idx]}",
                 f"{elapse_weights[idx]}",
                 f"{zip_scores[idx]}",
             ])
@@ -282,15 +284,17 @@ class TableFormatter:
         self,
         round_id: str,
         challenge_id: str,
+        project_phase_str: str,
         ground_truth: str,
         uids: list[int],
         responses: list[OrganicNonStreamSynapse],
         ground_truth_scores: list[float],
+        ground_truth_scores_error: list[str],
         elapse_weights: list[float],
         zip_scores: list[float],
         cid: str
     ):
-        header = "🤖 Organic Workload" + f" ({round_id} | {challenge_id})"
+        header = f"🤖 Organic Workload ({project_phase_str}) ({round_id} | {challenge_id})"
         rows = []
         for idx, uid in enumerate(uids):
             r = responses[idx]
@@ -308,7 +312,7 @@ class TableFormatter:
                 f"{rstr}",
                 f"{ground_truth}",
                 f"{r.elapsed_time}s",
-                f"{ground_truth_scores[idx]}",
+                f"{ground_truth_scores[idx]} {ground_truth_scores_error[idx]}",
                 f"{elapse_weights[idx]}",
                 f"{zip_scores[idx]}",
             ])

@@ -12,6 +12,7 @@ from pydantic import BaseModel
 import yaml
 from agent.subquery_graphql_agent.base import ProjectConfig
 from agent.subquery_graphql_agent.node_types import detect_node_type
+from common.enums import ProjectPhase
 import common.utils as utils
 
 
@@ -23,6 +24,7 @@ class Project(BaseModel):
     enabled: bool
     description: str
     name: str
+    phase: int
     metadata: Metadata
 
 class ProjectData(BaseModel):
@@ -36,6 +38,19 @@ class ProjectListResponse(BaseModel):
     code: int
     message: str
     data: ProjectData
+
+class ChallengeData(BaseModel):
+    cid: str
+    cid_hash: str
+    challenge_type: int
+    challenge_id: str
+    project_phase: int
+    question: str
+
+class ChallengeResponse(BaseModel):
+    nextUpdate: int
+    now: int
+    boardChallenges: List[ChallengeData]
 
 ALLOWED_CID = []
 
@@ -97,12 +112,15 @@ class ProjectManager:
             logger.info(f"[ProjectManager] Total projects fetched: {len(all_projects)}")
 
         # Process all fetched projects
+        new_projects = {}
         for project in all_projects:
             cid = project.metadata.cid
             combined = f"{cid}{project.metadata.endpoint}"
             hash_value = utils.hash256(combined)[:8]
             key = f"{cid}_{hash_value}"
-            self.projects.update({key: project})
+            new_projects[key] = project
+
+        self.projects = new_projects
 
         for cid_hash, project in self.projects.items():
             if ALLOWED_CID and project.metadata.cid not in ALLOWED_CID:
@@ -120,7 +138,7 @@ class ProjectManager:
                 await self.register_project(cid_hash, project.metadata.endpoint)
         
     def load(self):
-        projects = {}
+        projects: dict[str, ProjectConfig] = {}
         for project_dir in self.target_dir.iterdir():
             if not project_dir.is_dir():
                 continue
@@ -134,6 +152,17 @@ class ProjectManager:
                 config = json.load(f)
             projects[cid_hash] = ProjectConfig(**config)
 
+        self.projects = {cid_hash: Project(
+            enabled=True,
+            description="",
+            name="",
+            phase=ProjectPhase.NORMAL.value,
+            metadata=Metadata(
+                cid=config.cid,
+                endpoint=config.endpoint
+            )
+        ) for cid_hash, config in projects.items()}
+
         self.projects_config.update({cid_hash: config for cid_hash, config in projects.items()})
         return self.projects_config
 
@@ -142,6 +171,16 @@ class ProjectManager:
 
     def get_projects(self) -> Dict[str, ProjectConfig]:
         return self.projects_config
+
+    def is_project_enabled(self, cid_hash: str) -> bool:
+        project = self.projects.get(cid_hash, None)
+        return True if project is not None else False
+    
+    def get_project_phase(self, cid_hash: str) -> int:
+        project = self.projects.get(cid_hash, None)
+        if project:
+            return project.phase
+        return ProjectPhase.NORMAL.value
 
     async def pull_manifest(self, cid: str) -> Dict:
         try:
@@ -197,7 +236,6 @@ class ProjectManager:
         except Exception as e:
             raise RuntimeError(f"[ProjectManager] Failed to pull schema: {str(e)}")
 
-
     async def register_project(self, cid_hash: str, endpoint: str) -> ProjectConfig:
         try:
             # Project doesn't exist locally, need to analyze with LLM
@@ -231,7 +269,6 @@ class ProjectManager:
             return config
         except Exception as e:
             raise RuntimeError(f"[ProjectManager] Failed to register project {cid_hash} with endpoint {endpoint}: {str(e)}")
-
 
     async def analyze_project_with_llm(self, manifest: dict, schema_content: str, llm=None) -> dict:
         """
@@ -353,7 +390,7 @@ Make each capability very specific to the entities found in the schema."""
                 raise ValueError("Invalid JSON response from LLM")
             
         except Exception as e:
-            logger.warning(f"[ProjectManager] LLM analysis failed: {e}, using enhanced fallback")
+            logger.error(f"[ProjectManager] LLM analysis failed: {e}, using enhanced fallback")
         
             # Enhanced fallback analysis
             project_name = manifest.get('name', 'SubQuery Project')
@@ -385,7 +422,6 @@ Make each capability very specific to the entities found in the schema."""
                 ]
             }
 
-    
     def _load_existing_project(self, cid_hash: str) -> ProjectConfig | None:
         """Load existing project configuration from local disk if it exists."""
         if self.target_dir is None:
@@ -420,3 +456,20 @@ Make each capability very specific to the entities found in the schema."""
         file = dir / "config.json"
         with open(file, "w") as f:
             json.dump(asdict(config), f, indent=2)
+
+    async def pull_mock_challenges(self, page: int = 1):
+        board_url = os.environ.get('BOARD_SERVICE')
+        if not board_url:
+            logger.error("[ProjectManager] BOARD_SERVICE environment variable is not set.")
+            sys.exit(1)
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{board_url}/stats/board-challenges",
+                params={"exclude_miners": "true"},
+                timeout=aiohttp.ClientTimeout(total=15.0)
+            ) as resp:
+                resp.raise_for_status()
+                response_data = await resp.json()
+                parsed = ChallengeResponse(**response_data)
+                return parsed.boardChallenges

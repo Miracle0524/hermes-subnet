@@ -32,12 +32,15 @@ class CapacitySynapse(bt.Synapse):
     response: Optional[dict] = None
 class BaseSynapse(bt.Synapse):
     id: str | None = None
+    uid: int | None = None
     cid_hash: str | None = None
     block_height: int | None = 0
 
     status_code: int | None = 200
     error: str | None = None
     elapsed_time: float | None = 0.0
+    forward_start_time: int | None = 0
+    recv_start_time: int | None = 0
 
     miner_model_name: str | None = ''
     graphql_agent_model_name: str | None = ''

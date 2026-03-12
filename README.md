@@ -121,6 +121,7 @@ python -m neurons.validator
 - Use `OPENAI_BASE_URL` environment variable to configure alternative LLM providers (e.g., local models, other API endpoints)
 - **Important for Validators**: Avoid using GPT mini series models (gpt-4o-mini, etc.) as they have been tested and shown to perform poorly for challenge generation and response evaluation
 - Tested models (in openrouter): google/gemini-3-flash-preview, z-ai/glm-4.7
+  (In practice, we found that z-ai/glm-4.7 sometimes gets stuck, so it is not recommended for use).
 
 For detailed validator setup instructions, see [Validator Documentation](./docs/validator.md).
 
