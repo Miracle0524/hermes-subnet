@@ -35,6 +35,7 @@ class LocalProjectBase:
         }
 
     def save(self):
+        self.local_dir.mkdir(parents=True, exist_ok=True)
         with open(self.local_dir / "config.json", "w") as f:
             json.dump(self.save_data, f, indent=2)
 
